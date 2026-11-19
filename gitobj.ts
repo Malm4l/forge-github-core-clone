@@ -4,7 +4,7 @@
 // pkt-line codec. Pure node:crypto / node:zlib, no git binary anywhere.
 
 import { createHash } from 'node:crypto';
-import { deflateSync, inflateSync } from 'node:zlib';
+import { createInflate, deflateSync } from 'node:zlib';
 import type { GitObjectRec, RepoRec } from './store.ts';
 
 export const ZERO_OID = '0'.repeat(40);
@@ -474,29 +474,25 @@ export function writePack(objects: Array<{ oid: string; type: GitType; data: Buf
 }
 
 /**
- * Inflate the zlib stream starting at `offset`, finding its exact end by
- * binary search: a proper prefix of a zlib stream never inflates, and the
- * full stream followed by the next object's bytes still inflates, so the
- * shortest inflating prefix is exactly the stream.
+ * Inflate the zlib stream starting at `offset`. A streaming Inflate
+ * stops at the stream's own final block and reports the number of input
+ * bytes it consumed, which is exactly where the next pack entry begins —
+ * no probing of candidate lengths with throwing inflateSync calls, each
+ * of which used to build an Error just to be thrown away.
  */
-function inflateAt(bytes: Buffer, offset: number): { data: Buffer; consumed: number } {
-  const tail = bytes.subarray(offset);
-  const inflates = (length: number): boolean => {
-    try {
-      inflateSync(tail.subarray(0, length));
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  let lo = 1;
-  let hi = tail.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (inflates(mid)) hi = mid;
-    else lo = mid + 1;
-  }
-  return { data: inflateSync(tail.subarray(0, lo)), consumed: lo };
+function inflateAt(bytes: Buffer, offset: number): Promise<{ data: Buffer; consumed: number }> {
+  return new Promise((resolve, reject) => {
+    const stream = createInflate();
+    const parts: Buffer[] = [];
+    stream.on('data', (part: Buffer) => {
+      parts.push(part);
+    });
+    stream.once('error', reject);
+    stream.once('end', () => {
+      resolve({ data: Buffer.concat(parts), consumed: stream.bytesWritten });
+    });
+    stream.end(bytes.subarray(offset));
+  });
 }
 
 function applyDelta(base: Buffer, delta: Buffer): Buffer {
@@ -544,7 +540,7 @@ function applyDelta(base: Buffer, delta: Buffer): Buffer {
  * Read a pack into the repo's store. Handles plain objects and OFS/REF
  * deltas. Returns the object ids written.
  */
-export function readPackInto(repo: RepoRec, pack: Buffer): string[] {
+export async function readPackInto(repo: RepoRec, pack: Buffer): Promise<string[]> {
   if (pack.length < 12 + 20 || pack.subarray(0, 4).toString('ascii') !== 'PACK') {
     throw new Error('not a packfile');
   }
@@ -580,7 +576,7 @@ export function readPackInto(repo: RepoRec, pack: Buffer): string[] {
       baseOid = pack.subarray(offset, offset + 20).toString('hex');
       offset += 20;
     }
-    const { data, consumed } = inflateAt(pack, offset);
+    const { data, consumed } = await inflateAt(pack, offset);
     offset += consumed;
     const entry: RawEntry = {
       type: typeCode === 6 ? 'ofs-delta' : typeCode === 7 ? 'ref-delta' : CODE_TYPE[typeCode],

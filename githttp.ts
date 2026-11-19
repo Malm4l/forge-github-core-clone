@@ -56,13 +56,31 @@ function sideband(data: Buffer, band = 1, chunkSize = 32768): Buffer[] {
   return packets;
 }
 
+/**
+ * Finished packs by closure, so a repeated fetch of the same object set
+ * skips the deflate-and-hash rebuild. The key is exact, never hashed:
+ * the repo's id, its live object count (any stored object changes it,
+ * which retires every older key), and the closure's sorted object ids.
+ * Object ids are content hashes, so one key can only ever name one set
+ * of contents. The cache holds at most 32 packs and clears when full.
+ */
+const PACK_CACHE_LIMIT = 32;
+const packCache = new Map<string, Buffer>();
+
 function packBuffer(repo: RepoRec, objectIds: Iterable<string>): Buffer {
+  const ids = [...objectIds];
+  const key = `${repo.id}|${repo.objects.size}|${[...ids].sort().join(' ')}`;
+  const hit = packCache.get(key);
+  if (hit !== undefined) return hit;
   const objects: Array<{ oid: string; type: GitType; data: Buffer }> = [];
-  for (const oid of objectIds) {
+  for (const oid of ids) {
     const obj = getObject(repo, oid);
     if (obj) objects.push({ oid, type: obj.type, data: obj.data });
   }
-  return writePack(objects);
+  const pack = writePack(objects);
+  if (packCache.size >= PACK_CACHE_LIMIT) packCache.clear();
+  packCache.set(key, pack);
+  return pack;
 }
 
 /** All refs as [name, oid], sorted by name, tags peeled where annotated. */
