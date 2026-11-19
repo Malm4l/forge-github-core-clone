@@ -1,5 +1,12 @@
 # Forge — a GitHub core clone for make.fun
 
+[![make.fun · github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/Malm4l/forge-github-core-clone/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![reward](https://make.fun/badge/github-core-clone-01/Malm4l/forge-github-core-clone/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+
+Built for the [make.fun “Build a GitHub-compatible git forge” bounty](https://make.fun/bounty/github-core-clone-01).
+
+
 A single-process, in-memory implementation of the GitHub core surfaces,
 built for the make.fun `github-core-clone-01` bounty. One Node process
 (Node 22+, standard library only) serves four surfaces over one store:
@@ -29,7 +36,7 @@ built for the make.fun `github-core-clone-01` bounty. One Node process
 - `main.ts` — the entry↔env lifecycle (register the bound port with
   `$MAKEFUN_ENV_URL`, poll `/done`, exit 0). Provided by the kit, kept
   as-is.
-- `app.ts` — the HTTP server: auth (the trial's bearer token from
+- `app.ts` — the HTTP server: auth (the trial's bearer credential from
   `MAKEFUN_SHOP_TOKEN`), request ids, and routing between the surfaces.
 - `store.ts` — users, repositories and their records, plus the
   deterministic tick clock seeded by `MAKEFUN_TRIAL_NOW`.
